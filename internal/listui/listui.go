@@ -4,15 +4,17 @@ package listui
 import (
 	"fmt"
 	"log"
-	//"strings" // Import strings for parsing unit type
+	//"strings"
 
 	"github.com/charmbracelet/bubbles/list"
-	"systemctltui/internal/system" // Import the enhanced system package
+	//"github.com/charmbracelet/lipgloss" // Needed for list styles
+	"systemctltui/internal/system"
 )
 
 // ListItem implements list.Item and holds a system.Unit.
+// Exported because it's used in tui/model.
 type ListItem struct {
-	Unit system.Unit // Embed the Unit data
+	Unit system.Unit // Embed the Unit data - system.Unit is already exported
 }
 
 // Title returns the unit name for the list item title.
@@ -20,35 +22,36 @@ func (i ListItem) Title() string { return i.Unit.Name }
 
 // Description returns a formatted string of unit status and description for the list item description.
 func (i ListItem) Description() string {
-	// Format Load, Active, Sub, and Description nicely
 	return fmt.Sprintf("[%s/%s/%s] %s", i.Unit.Load, i.Unit.Active, i.Unit.Sub, i.Unit.Description)
 }
 
-// FilterValue returns the unit name for filtering. You might add type or description later.
+// FilterValue returns the unit name for filtering.
 func (i ListItem) FilterValue() string { return i.Unit.Name }
 
 
-// simpleListItem implements list.Item for static lists (Options, Commands).
-// Defined at package level, unexported as it's internal to this package.
-type simpleListItem struct { // <--- Moved to package level
-    title, desc string
+// SimpleListItem implements list.Item for static lists (Options, Commands, Filters).
+// Exported because it's used in tui/model for the filter list items.
+type SimpleListItem struct { // <--- Exported struct name
+    TitleValue string // <--- Exported field name
+    DescValue string // <--- Exported field name
 }
 
-// Implement the list.Item interface for simpleListItem
-func (i simpleListItem) Title() string { return i.title } // <--- Moved to package level
-func (i simpleListItem) Description() string { return i.desc } // <--- Moved to package level
-func (i simpleListItem) FilterValue() string { return i.title } // <--- Moved to package level
+// Implement the list.Item interface for SimpleListItem
+func (i SimpleListItem) Title() string { return i.TitleValue } // <--- Uses exported field
+func (i SimpleListItem) Description() string { return i.DescValue } // <--- Uses exported field
+func (i SimpleListItem) FilterValue() string { return i.TitleValue } // <--- Uses exported field
 
 
-// CreateList creates a new bubbletea list model from a slice of ListItems.
-// Update function signature - it still takes []ListItem
+// CreateList creates a new bubbletea list model from a slice of ListItems (Units).
+// Exported because it's used in NewLists.
 func CreateList(items []ListItem) list.Model {
 	const width, height = 60, 20 // Example fixed size
 	delegate := list.NewDefaultDelegate()
 
-	// Check if items is empty and provide a placeholder if necessary
 	listItems := convert(items)
+	// Provide a placeholder if the list is empty after conversion
 	if len(listItems) == 0 {
+		// Use ListItem for the placeholder for consistency
 		listItems = []list.Item{ListItem{Unit: system.Unit{Name: "No units found", Description: "Try refreshing or check systemctl status."}}}
 	}
 
@@ -61,7 +64,7 @@ func CreateList(items []ListItem) list.Model {
 	l.SetFilteringEnabled(true) // Filtering is useful for units
 	l.SetShowStatusBar(true)
 
-	// Customize list styles if needed
+	// Customize list styles if needed (example)
 	// l.Styles.Title = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFF"))
 	// l.Styles.Item.Normal = lipgloss.NewStyle().PaddingLeft(2)
     // l.Styles.Item.Selected = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170")).Bold(true)
@@ -70,115 +73,112 @@ func CreateList(items []ListItem) list.Model {
 	return l
 }
 
+// CreateSimpleList creates a new bubbletea list model from a slice of SimpleListItems.
+// This is for static lists like Options, Commands, and Filters.
+// Exported because it's used in tui/model.
+func CreateSimpleList(items []SimpleListItem) list.Model { // <--- Exported function name
+    const width, height = 30, 10 // Smaller size for dialogs/static lists
+    delegate := list.NewDefaultDelegate()
+
+    // Convert SimpleListItem slice to a list.Item slice
+    converter := func(s []SimpleListItem) []list.Item {
+        out := make([]list.Item, len(s))
+        for i, it := range s {
+            out[i] = list.Item(it) // Convert SimpleListItem (which implements list.Item)
+        }
+        return out
+    }
+
+    l := list.New(converter(items), delegate, width, height)
+    l.SetShowTitle(false)
+    l.SetShowPagination(false) // No pagination needed for small static lists
+    l.SetFilteringEnabled(true) // Filtering is useful for commands/filters
+    l.SetShowStatusBar(false) // No status bar needed
+
+    // Customize styles for simple lists if they differ (example)
+    // l.Styles.SelectedTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("170")).Bold(true)
+
+    return l
+}
+
+
 // convert converts a slice of ListItem to a slice of list.Item.
-// Update function signature - it still takes []ListItem
+// Unexported as it's only used internally.
 func convert(source []ListItem) []list.Item {
 	out := make([]list.Item, len(source))
 	for i, it := range source {
-		out[i] = list.Item(it) // Correctly convert ListItem (which implements list.Item)
+		out[i] = list.Item(it)
 	}
 	return out
 }
 
 // InitOptionsList creates the list for global options.
+// Exported because it's used in NewLists.
 func InitOptionsList() list.Model {
-    // simpleListItem and its methods are now defined at package level
-
-	items := []simpleListItem{ // simpleListItem is now visible here
-		{title: "-h, --help", desc: "Show help text"},
-		{title: "--version", desc: "Show version"},
-		// Add more options here as you implement them
+	items := []SimpleListItem{ // Use exported SimpleListItem
+		{TitleValue: "-h, --help", DescValue: "Show help text"}, // Use exported fields
+		{TitleValue: "--version", DescValue: "Show version"}, // Use exported fields
 	}
-
-    // Convert simpleListItem slice to a list.Item slice
-    simpleConverter := func(s []simpleListItem) []list.Item {
-        out := make([]list.Item, len(s))
-        for i, it := range s {
-            out[i] = list.Item(it) // Convert simpleListItem (which now implements list.Item)
-        }
-        return out
-    }
-
-	const width, height = 60, 20 // Match list size
-	delegate := list.NewDefaultDelegate()
-	l := list.New(simpleConverter(items), delegate, width, height)
-    l.SetShowTitle(false)
-    l.SetShowPagination(false) // No pagination for static lists
-    l.SetFilteringEnabled(false) // Filtering not typically needed for these few options
-    l.SetShowStatusBar(false) // No status bar
-
-    return l
+    return CreateSimpleList(items) // Use exported CreateSimpleList
 }
 
 // InitCommandsList creates the list for systemctl commands.
+// Exported because it's used in NewLists.
 func InitCommandsList() list.Model {
-    // simpleListItem and its methods are now defined at package level
-
-	items := []simpleListItem{ // simpleListItem is now visible here
-		{title: "status", desc: "Show unit status and logs"},
-		{title: "start", desc: "Start one or more units"},
-		{title: "stop", desc: "Stop one or more units"},
-		{title: "restart", desc: "Restart one or more units"},
-		{title: "enable", desc: "Enable one or more units"},
-		{title: "disable", desc: "Disable one or more units"},
+	items := []SimpleListItem{ // Use exported SimpleListItem
+		{TitleValue: "status", DescValue: "Show unit status and logs"}, // Use exported fields
+		{TitleValue: "start", DescValue: "Start one or more units"}, // Use exported fields
+		{TitleValue: "stop", DescValue: "Stop one or more units"}, // Use exported fields
+		{TitleValue: "restart", DescValue: "Restart one or more units"}, // Use exported fields
+		{TitleValue: "enable", DescValue: "Enable one or more units"}, // Use exported fields
+		{TitleValue: "disable", DescValue: "Disable one or more units"}, // Use exported fields
 		// Add more commands here
 	}
-    // Convert simpleListItem slice to a list.Item slice
-    simpleConverter := func(s []simpleListItem) []list.Item {
-        out := make([]list.Item, len(s))
-        for i, it := range s {
-            out[i] = list.Item(it) // Convert simpleListItem (which now implements list.Item)
-        }
-        return out
-    }
-
-	const width, height = 60, 20 // Match list size
-	delegate := list.NewDefaultDelegate()
-	l := list.New(simpleConverter(items), delegate, width, height)
-    l.SetShowTitle(false)
-    l.SetShowPagination(false) // No pagination for static lists
-    l.SetFilteringEnabled(true) // Filtering IS useful for commands!
-    l.SetShowStatusBar(true) // Status bar is useful with filtering
-
-    return l
+    return CreateSimpleList(items) // Use exported CreateSimpleList
 }
 
 
-// InitUnitsList fetches units from the system and creates the list of ListItems.
+// InitUnitsList fetches units from the system and creates the list of ListItems (Units).
+// Exported because it's used in NewLists.
 func InitUnitsList() list.Model {
-	// Call the enhanced function from the system package
-	units, err := system.FetchUnits()
+	// Fetch units from the system
+	units, err := system.FetchUnits() // system.FetchUnits is already exported
 	if err != nil {
 		log.Printf("Error fetching units: %v", err)
 		// Create a list item to show the error
         // Using the Unit struct for consistency, even for errors
-        errorUnit := system.Unit{
+        errorUnit := system.Unit{ // system.Unit is already exported
             Name: "Error",
             Description: fmt.Sprintf("Failed to fetch units: %v", err),
             Load: "error", Active: "error", Sub: "error", Type: "error",
         }
-		return CreateList([]ListItem{{Unit: errorUnit}}) // <-- Use the updated ListItem struct
+		return CreateList([]ListItem{{Unit: errorUnit}}) // Use exported CreateList and ListItem
 	}
 
-	items := make([]ListItem, 0, len(units)) // <-- Use the updated ListItem struct
+	// Convert fetched Units to ListItems
+	items := make([]ListItem, 0, len(units)) // Use exported ListItem
 	for _, unit := range units {
-		// Create a ListItem for each fetched Unit
-		items = append(items, ListItem{Unit: unit}) // <-- Embed the system.Unit
+		items = append(items, ListItem{Unit: unit}) // Use exported ListItem
 	}
 
-	return CreateList(items) // Returns a list.Model
+	// Create and return the initial list.Model containing all units
+	return CreateList(items) // Use exported CreateList
 }
 
 // NewLists initializes all the necessary lists for the application.
-// This function can be called from the main model setup.
-// It will now fetch and return lists based on the enhanced Unit data.
-func NewLists() []list.Model {
-	// Fetching units can take time. Consider showing a loading indicator later.
-	unitsList := InitUnitsList()
+// It fetches units (which are stored in the model afterwards)
+// and returns the initial list models for the tabs.
+// Exported because it's used in tui/model.
+func NewLists() []list.Model { // <--- Exported function name
+    // InitUnitsList returns the initial list model for the Units tab.
+    // The full list of units fetched by InitUnitsList will be extracted
+    // and stored separately in the model in NewModel.
+	unitsListModel := InitUnitsList() // InitUnitsList is exported
 
 	return []list.Model{
-		InitOptionsList(),    // Index 0, matches constants.TabOptions
-		InitCommandsList(),   // Index 1, matches constants.TabCommands
-		unitsList,            // Index 2, matches constants.TabUnits
+		InitOptionsList(),    // InitOptionsList is exported
+		InitCommandsList(),   // InitCommandsList is exported
+		unitsListModel,       // The list.Model itself is a type from an external package
 	}
 }
+
